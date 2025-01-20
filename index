@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jadwal Sholat Harian</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2.5em;
+            text-transform: uppercase;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #ccc;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        td {
+            background-color: #f9f9f9;
+        }
+        .time-date {
+            margin: 20px 0;
+            font-size: 1.2em;
+            color: #2c3e50;
+        }
+        #city-name {
+            color: red;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        select {
+            padding: 10px;
+            font-size: 1em;
+            margin: 10px 0;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+            border: none;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+        }
+        .btn-save {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+        }
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+            text-align: center;
+        }
+        .notif {
+            padding: 10px;
+            margin-top: 10px;
+            display: none;
+            font-size: 1em;
+            border-radius: 5px;
+        }
+        .notif-success {
+            background-color: #2ecc71;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Jadwal Sholat Harian</h1>
+        <div class="time-date" id="time-date">Memuat waktu...</div>
+        <div id="city-name">Memuat kota...</div>
+
+        <!-- Dropdown Kota -->
+        <label for="city-select">Pilih Kota:</label>
+        <select id="city-select">
+            <option value="">-- Pilih Kota --</option>
+        </select>
+        
+        <!-- Tombol -->
+        <div class="button-container">
+            <button class="btn-primary" onclick="fetchJadwalSholat()">Cari Jadwal</button>
+            <button class="btn-danger" onclick="resetJadwalSholat()">Reset</button>
+            <button class="btn-save" onclick="simpanJadwal()">Simpan Jadwal</button>
+        </div>
+
+        <!-- Tabel Jadwal -->
+        <table>
+            <thead>
+                <tr>
+                    <th>Sholat</th>
+                    <th>Waktu</th>
+                    <th>Koreksi (Menit)</th>
+                </tr>
+            </thead>
+            <tbody id="jadwal-sholat">
+                <tr>
+                    <td colspan="3">Memuat data...</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Notifikasi -->
+        <div id="notif" class="notif notif-success">Data berhasil disimpan ke localStorage.</div>
+
+        <!-- Elemen Audio untuk Azan -->
+        <audio id="azan-audio" src="https://dl.dropboxusercontent.com/s/014y8recd08s4sbpqs7w4/MisyariAdzan-Doa.MP3?rlkey=8vdxyyhy7co11jtb95zn9b9cp" preload="auto"></audio>
+
+        <!-- Elemen Audio untuk 30Juz -->
+        <audio id="audio30Juz" src="https://dl.dropboxusercontent.com/s/cjzxe959uu024dvwdo9id/30Juz1xEditAudiocity.mp3?rlkey=8sx07iyawyx09pvvniitnv8pw" loop autoplay></audio>
+    </div>
+
+    <script>
+        const apiKota = "https://api.myquran.com/v2/sholat/kota/semua";
+        const apiJadwal = "https://api.myquran.com/v2/sholat/jadwal/";
+
+        let jadwalSholat = {};  // Simpan jadwal sholat
+
+        function updateTimeAndDate() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const formattedDate = now.toLocaleDateString('id-ID', options);
+            const time = now.toLocaleTimeString('id-ID');
+            document.getElementById("time-date").innerText = `${formattedDate} | ${time}`;
+        }
+        setInterval(updateTimeAndDate, 1000);
+
+        async function loadKota() {
+            try {
+                const response = await fetch(apiKota);
+                const dataKota = await response.json();
+                const kotaSelect = document.getElementById("city-select");
+
+                dataKota.data.forEach(kota => {
+                    const option = document.createElement("option");
+                    option.value = kota.id;
+                    option.textContent = kota.lokasi;
+                    kotaSelect.appendChild(option);
+                });
+
+                const savedCityId = localStorage.getItem("selectedCityId");
+                if (savedCityId) {
+                    kotaSelect.value = savedCityId;
+                    fetchJadwalSholat();
+                }
+            } catch (error) {
+                console.error("Gagal mengambil data kota:", error);
+            }
+        }
+
+        async function fetchJadwalSholat() {
+            const citySelect = document.getElementById("city-select");
+            const cityId = citySelect.value;
+
+            if (!cityId) {
+                alert("Silakan pilih kota terlebih dahulu!");
+                return;
+            }
+
+            localStorage.setItem("selectedCityId", cityId);
+
+            try {
+                const today = new Date();
+                const tanggal = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+                const responseJadwal = await fetch(`${apiJadwal}${cityId}/${tanggal}`);
+                const dataJadwal = await responseJadwal.json();
+
+                if (dataJadwal.data && dataJadwal.data.jadwal) {
+                    jadwalSholat = dataJadwal.data.jadwal;  // Menyimpan jadwal untuk pengecekan adzan
+                    displayJadwal(jadwalSholat, citySelect.options[citySelect.selectedIndex].text);
+                    saveToLocalStorage(jadwalSholat, citySelect.options[citySelect.selectedIndex].text);
+                } else {
+                    alert("Data jadwal sholat tidak ditemukan.");
+                }
+            } catch (error) {
+                console.error("Gagal mengambil data jadwal:", error);
+            }
+        }
+
+        function displayJadwal(jadwal, cityName) {
+            const jadwalTable = document.getElementById("jadwal-sholat");
+            const koreksiWaktu = loadKoreksiWaktu();
+
+            jadwalTable.innerHTML = ` 
+                ${["subuh", "dzuhur", "ashar", "maghrib", "isya"]
+                    .map((waktu) => {
+                        const originalTime = jadwal[waktu];
+                        const koreksi = koreksiWaktu[waktu] || 0;
+                        const updatedTime = adjustTime(originalTime, koreksi);
+
+                        return ` 
+                            <tr>
+                                <td>${capitalizeFirstLetter(waktu)}</td>
+                                <td id="time-${waktu}">${updatedTime}</td>
+                                <td>
+                                    <input type="number" value="${koreksi}" 
+                                           onchange="updateKoreksiWaktu('${waktu}', this.value, '${originalTime}')" />
+                                </td>
+                            </tr>
+                        `;
+                    })
+                    .join("")}
+            `;
+            document.getElementById("city-name").innerText = `Jadwal untuk kota: ${cityName}`;
+        }
+
+        function adjustTime(originalTime, koreksi) {
+            const [hours, minutes] = originalTime.split(":").map(Number);
+            const newDate = new Date();
+            newDate.setHours(hours, minutes + koreksi);
+            return newDate.toTimeString().slice(0, 5);
+        }
+
+        function updateKoreksiWaktu(sholat, value, originalTime) {
+            const koreksiWaktu = loadKoreksiWaktu();
+            const koreksi = parseInt(value) || 0;
+            koreksiWaktu[sholat] = koreksi;
+            localStorage.setItem("koreksiWaktu", JSON.stringify(koreksiWaktu));
+
+            const updatedTime = adjustTime(originalTime, koreksi);
+            document.getElementById(`time-${sholat}`).innerText = updatedTime;
+        }
+
+        function loadKoreksiWaktu() {
+            return JSON.parse(localStorage.getItem("koreksiWaktu")) || {};
+        }
+
+        function simpanJadwal() {
+            const notif = document.getElementById("notif");
+            notif.style.display = "block";
+            setTimeout(() => (notif.style.display = "none"), 3000);
+        }
+
+        function resetJadwalSholat() {
+            localStorage.removeItem("savedData");
+            localStorage.removeItem("selectedCityId");
+            localStorage.removeItem("koreksiWaktu");
+            document.getElementById("city-name").innerText = "Memuat kota...";
+            document.getElementById("jadwal-sholat").innerHTML = ` 
+                <tr><td colspan="3">Memuat data...</td></tr>
+            `;
+        }
+
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+
+        // Fungsi untuk memeriksa apakah waktu adzan sudah tiba dan memutar azan
+        function checkAzanTime() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            
+            const times = {
+                subuh: jadwalSholat.subuh,
+                dzuhur: jadwalSholat.dzuhur,
+                ashar: jadwalSholat.ashar,
+                maghrib: jadwalSholat.maghrib,
+                isya: jadwalSholat.isya
+            };
+
+            for (let waktu in times) {
+                const originalTime = times[waktu];
+                const koreksi = loadKoreksiWaktu()[waktu] || 0;  // Ambil koreksi waktu untuk sholat ini
+                const adjustedTime = adjustTime(originalTime, koreksi); // Sesuaikan waktu dengan koreksi
+
+                const [adzanHour, adzanMinute] = adjustedTime.split(":").map(Number);
+                if (adzanHour === hours && adzanMinute === minutes) {
+                    playAzan();
+                    stopAudio30Juz();
+                    break;
+                }
+            }
+        }
+
+        function playAzan() {
+            const azanAudio = document.getElementById("azan-audio");
+            azanAudio.play();
+
+            // Menunggu hingga azan selesai, lalu nyalakan kembali 30Juz
+            azanAudio.onended = function() {
+                startAudio30Juz();
+            };
+        }
+
+        function stopAudio30Juz() {
+            const audio30Juz = document.getElementById("audio30Juz");
+            audio30Juz.pause();  // Hentikan audio 30Juz saat azan diputar
+        }
+
+        function startAudio30Juz() {
+            const audio30Juz = document.getElementById("audio30Juz");
+            audio30Juz.play();  // Putar kembali audio 30Juz setelah azan selesai
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadKota();
+            updateTimeAndDate();
+        });
+
+        // Cek waktu adzan setiap detik
+        setInterval(checkAzanTime, 1000);
+    </script>
+</body>
+</html>
